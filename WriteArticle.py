@@ -7,21 +7,32 @@ from md2pdf.core import md2pdf
 
 OPENAI_KEY = "ENTER_YOUR_OPENAI_KEY"
 
-def callOpenAI(text, token=150, temperature=0.3):
-   openai.api_key = OPENAI_KEY
-   model = "text-davinci-003"
-   prompt = text
+def callOpenAI(text, max_tokens=150, temperature=0.3):
+    # Set OpenAI API key
+    openai.api_key = OPENAI_KEY
+    model = "text-davinci-003"
+    prompt = text
 
-   response = openai.Completion.create(
-        model="text-davinci-003",
-	prompt=prompt,
-        max_tokens=150,
-        top_p=1.0,
-        temperature=0.3,
+    # Call OpenAI API for text completion
+    response = openai.Completion.create(
+        model=model,
+        prompt=prompt,
+        max_tokens=max_tokens,
+        temperature=temperature,
         frequency_penalty=0.0,
         presence_penalty=0.0
-   )
-   return response["choices"][0]["text"]
+    )
+    return response.choices[0].text.strip()
+
+def generate_outline(thema, language):
+    question = f"Create an outline for an essay with short terms about '{thema}' in {language}"
+    response = callOpenAI(question)
+    return re.sub(r'\n+', '\n', response).strip()
+
+def generate_paragraph(chapter, previous_chapter, thema, language):
+    paragraph_type = "an introduction" if chapter == 1 else "a paragraph"
+    question = f"Write in {language} {paragraph_type} about '{chapter}' and make a transition with the previous paragraph: '{previous_chapter}' in a book context concerning '{thema}'"
+    return callOpenAI(question, max_tokens=4000, temperature=0.9)
 
 ############################################
 ################### MAIN ################### 
@@ -30,46 +41,35 @@ def callOpenAI(text, token=150, temperature=0.3):
 book = ""
 os.system("clear")
 
-language = input("Language: (french/english) : ")
+# Prompt user for language and thematic topic
+language = input("Language: (french/english): ")
 thema = input("Enter the article thematic: ")
 
-resp  = "n"
-while(resp == "n"):
-   question = "Create an outline for an essay with short terms about '" + thema + "' in " + language
-   #response = getOutline(question)
-   response = callOpenAI(question)
-   response = re.sub(r'\n+', '\n', response).strip() 
-   print(response + "\n")
-   resp = input("Do you want to write an article with this table of contents  (y/n) ? ")
+resp = "n"
+while resp == "n":
+    # Generate outline
+    outline = generate_outline(thema, language)
+    print(outline + "\n")
 
-summary = response.splitlines()
-book += "#" + thema + "\n"
-cmpt = 0
-type = ""
+    # Prompt user to confirm using the generated table of contents
+    resp = input("Do you want to write an article with this table of contents (y/n)? ")
 
-print("")
-print("Writing document ...")
-for chapter in summary:
-   cmpt = cmpt + 1
-      
-   if cmpt % 3 == 1:
-      print("Pause")
-      time.sleep(20)
+summary = outline.splitlines()
+book += f"#{thema}\n"
 
-   if chapter:
-      print("Writing paragraph => " + chapter)
-      if cmpt == 1:
-         type = "an introduction"
-      else:
-         type = "a paragraph"
+print("\nWriting document ...")
+for chapter, previous_chapter in zip(summary, summary[:-1]):
+    print("Writing paragraph =>", chapter)
+    
+    if len(book) > 0 and (chapter[0] == "I" or chapter[0] == "V"):
+        book += f"\n###{chapter}\n"
+    else:
+        book += f"\n####{chapter}\n"
 
-      #paragraph = getParagraph("Write in " + language + " " + type  + " about '" + chapter + "' and make a transition with the previous paragraph : '" + summary[cmpt-1] + "' in a book context concerning '" + thema + "'")
-      paragraph = callOpenAI("Write in " + language + " " + type  + " about '" + chapter + "' and make a transition with the previous paragraph : '" + summary[cmpt-1] + "' in a book context concerning '" + thema + "'", 4000, 0.9)
-      if chapter[0] == "I" or chapter[0] == "V":
-         book += "\n" + "###" + chapter + "\n"
-      else:
-         book += "\n" + "####" + chapter + "\n"
-      book += paragraph + "\n\n"
+    paragraph = generate_paragraph(chapter, previous_chapter, thema, language)
+    book += f"{paragraph}\n\n"
 
+# Convert the book to PDF using md2pdf
 md2pdf("./article.pdf", book, None, None, None)
-#os.system("open ./article.pdf")
+# Uncomment the line below to open the generated PDF file
+# os.system("open ./article.pdf")
